@@ -1,0 +1,63 @@
+FROM registry.hub.docker.com/library/alpine:3.5
+
+ENV TERRAFORM_VERSION=0.9.5
+ENV TERRAFORM_SHA256SUM=0cbb5474c76d878fbc99e7705ce6117f4ea0838175c13b2663286a207e38d783
+
+ENV ANSIBLE_VERSION=2.3.1.0-0.1.rc1
+
+ENV K8S_VERSION=v1.6.3
+
+RUN apk add --update \
+    alpine-sdk \
+    git \
+    openssh \
+    curl \
+    openssh-client \
+    bash \
+    wget \
+    openssl \
+    python \
+    py-dateutil \
+    py-httplib2 \
+    py-jinja2 \
+    py-paramiko \
+    py-pip \
+    py-setuptools \
+    py-yaml \
+    py-netaddr \
+    tar && \
+    pip install --upgrade pip python-keyczar boto awscli && \
+    curl https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip > terraform_${TERRAFORM_VERSION}_linux_amd64.zip && \
+    echo "${TERRAFORM_SHA256SUM}  terraform_${TERRAFORM_VERSION}_linux_amd64.zip" > terraform_${TERRAFORM_VERSION}_SHA256SUMS && \
+    sha256sum -cs terraform_${TERRAFORM_VERSION}_SHA256SUMS && \
+    unzip terraform_${TERRAFORM_VERSION}_linux_amd64.zip -d /bin && \
+    rm -f terraform_${TERRAFORM_VERSION}_linux_amd64.zip
+
+RUN mkdir /etc/ansible/ /ansible
+RUN echo "[local]" >> /etc/ansible/hosts && \
+    echo "localhost" >> /etc/ansible/hosts
+
+RUN \
+  curl -fsSL "https://releases.ansible.com/ansible/ansible-${ANSIBLE_VERSION}.tar.gz" -o ansible.tar.gz && \
+  tar -xzf ansible.tar.gz -C ansible --strip-components 1 && \
+  rm -fr ansible.tar.gz /ansible/docs /ansible/examples /ansible/packaging
+
+
+ADD https://storage.googleapis.com/kubernetes-release/release/${K8S_VERSION}/bin/linux/amd64/kubectl /usr/local/bin/kubectl
+RUN set -x && \
+    apk add --no-cache curl ca-certificates && \
+    chmod +x /usr/local/bin/kubectl
+
+
+RUN mkdir -p /data
+WORKDIR /data
+
+ENV ANSIBLE_GATHERING smart
+ENV ANSIBLE_HOST_KEY_CHECKING false
+ENV ANSIBLE_RETRY_FILES_ENABLED false
+ENV ANSIBLE_ROLES_PATH /ansible/playbooks/roles
+ENV ANSIBLE_SSH_PIPELINING True
+ENV PATH /ansible/bin:$PATH
+ENV PYTHONPATH /ansible/lib
+
+ENTRYPOINT ["make"]
